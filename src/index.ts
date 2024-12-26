@@ -14,6 +14,7 @@ interface recorderConfig {
     sampleRate?: number,        // 采样率
     numChannels?: number,       // 声道数
     compiling?: boolean,        // 是否边录边播
+    silenceDurationNotify?: number
 }
 
 class Index extends Recorder {
