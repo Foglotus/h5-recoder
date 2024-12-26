@@ -57,6 +57,7 @@ declare class Recorder {
     public onresumeplay: () => void;
     public onstopplay: () => void;
     public onplayend: () => void;
+    public onsilence: () => void;
 
     constructor(options?: recorderConfig);
 
