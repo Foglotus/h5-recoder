@@ -26,6 +26,8 @@ class Index extends Recorder {
     public onresumeplay: () => void;            // 音频恢复播放回调
     public onstopplay: () => void;              // 音频停止播放回调
     public onplayend: () => void;               // 音频正常播放结束
+    public onwav: (wav: DataView<ArrayBuffer>) => void;                   // 定时发送当前音频
+    public onsilence: () => void;               // 用户长时间未说话回调
     /**
      * @param {Object} options 包含以下三个参数：
      * sampleBits，采样位数，一般8,16，默认16
@@ -262,7 +264,7 @@ class Index extends Recorder {
 
         // PCM增加44字节的头就是WAV格式了
         return encodeWAV(pcmTemp, this.inputSampleRate,
-            this.outputSampleRate, this.config.numChannels, this.oututSampleBits, this.littleEdian);;
+            this.outputSampleRate, this.config.numChannels, this.oututSampleBits, this.littleEdian);
     }
 
     /**

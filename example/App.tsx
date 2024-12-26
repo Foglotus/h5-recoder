@@ -10,6 +10,7 @@ import Player from '../src/player/player';
 import Translate from './components/Application/Translate/Translate';
 
 import 'semantic-ui-css/semantic.min.css';
+import { downloadWAV } from '../src/download/download';
 
 declare let OggVorbisEncoder: any;
 
@@ -62,6 +63,8 @@ class App extends React.Component {
         duration: 0,
         fileSize: 0,
         vol: 0,
+        silenceDurationNotify: 2500,
+        compilingProcess: true,
     }
     changeSampleRate = (e, params) => {
         this.setState({
@@ -90,6 +93,8 @@ class App extends React.Component {
             sampleRate: this.state.sampleRate,
             numChannels: this.state.numChannel,
             compiling: this.state.compiling,       // 是否开启边录音边转化（后期改用web worker）
+            silenceDurationNotify: this.state.silenceDurationNotify,
+            compilingProcess: this.state.compilingProcess,
         };
     }
 
@@ -118,10 +123,14 @@ class App extends React.Component {
                 // 推荐使用 onprogress
             }
 
+            recorder.onsilence = () => {
+                console.debug('好久没讲话了')
+            }
+
             recorder.onprogress = (params) => {
                 // console.log(recorder.duration);
                 // console.log(recorder.fileSize);
-
+                console.debug('打印声音', params.vol.toFixed(2))
                 this.setState({
                     duration: params.duration.toFixed(5),
                     fileSize: params.fileSize,
@@ -129,9 +138,14 @@ class App extends React.Component {
                 });
                 // 此处控制数据的收集频率
                 if (config.compiling) {
-                    console.log('音频总数据：', params.data);
+                    // console.log('音频总数据：', recorder.getWAVBlob());
                 }
             }
+
+            recorder.onwav = (pcmData) => {
+                console.debug('pcmData:', pcmData)
+                downloadWAV(new Blob([pcmData], { type: 'audio/wav' }), 'wav')
+            };
 
             recorder.onplay = () => {
                 console.log('%c回调监听，开始播放音频', 'color: #2196f3')
@@ -291,6 +305,7 @@ class App extends React.Component {
         console.log('结束录音');
         drawRecordId && cancelAnimationFrame(drawRecordId);
         drawRecordId = null;
+        // encodeWAV(recorder.)
     }
     playRecord = () => {
         recorder && recorder.play();
@@ -435,6 +450,14 @@ class App extends React.Component {
                             value={ this.state.numChannel }
                             options={ numChannelOptions }
                             onChange={ this.changeNumChannel }
+                        />
+                        <Form.Input
+                            fluid
+                            label='采样位数'
+                            value={ this.state.silenceDurationNotify }
+                            type='number'
+                            min={ 8 }
+                            max={ 16 }
                         />
                     </Form.Group>
                     <Form.Field>

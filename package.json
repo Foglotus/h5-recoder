@@ -74,5 +74,7 @@
     "webpack-cli": "^3.3.0",
     "webpack-dev-server": "^3.3.1"
   },
-  "dependencies": {}
+  "dependencies": {
+    "assist-worker": "^1.1.0"
+  }
 }

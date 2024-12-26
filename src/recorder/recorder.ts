@@ -1,4 +1,6 @@
+import { encoderToPcmJob } from '../worker';
 import { compress, encodePCM, encodeWAV } from '../transform/transform';
+import { createAssistWorker } from 'assist-worker'
 
 declare let window: any;
 declare let Math: any;
@@ -11,6 +13,8 @@ interface recorderConfig {
     sampleRate?: number,        // 采样率
     numChannels?: number,       // 声道数
     compiling?: boolean,        // 是否边录边播
+    silenceDurationNotify?: number // 沉默多久通知
+    compilingProcess?: boolean // 是否边录边转换
 }
 
 export default class Recorder {
@@ -33,6 +37,11 @@ export default class Recorder {
     protected littleEdian: boolean;                 // 是否是小端字节序
     protected fileSize: number = 0;                 // 录音大小，byte为单位
     protected duration: number = 0;                 // 录音时长
+    protected speaking: boolean = false;            // 用户是否在讲话
+    protected lastNoSpeakTime: number;          // 没有讲话的时间戳
+    protected silenceHasNotify: boolean;            // 沉默是否通知过了
+    protected silenceDurationNotify: number;        // 沉默通知的时长
+    protected lastProcessAudioDuration: number;     // 上一次处理音频的时间间隔
     private needRecord: boolean = true;             // 由于safari问题，导致使用该方案代替disconnect/connect方案
     // 正在录音时间，参数是已经录了多少时间了
     public onprocess: (duration: number) => void;
@@ -48,7 +57,8 @@ export default class Recorder {
     public onresumeplay: () => void;            // 音频恢复播放回调
     public onstopplay: () => void;              // 音频停止播放回调
     public onplayend: () => void;               // 音频正常播放结束
-
+    public onsilence: () => void;               // 沉默回调
+    public onwav: (wavData: any) => void;
     /**
      * @param {Object} options 包含以下三个参数：
      * sampleBits，采样位数，一般8,16，默认16
@@ -65,7 +75,7 @@ export default class Recorder {
         this.setNewOption(options);
 
         // 判断端字节序
-        this.littleEdian = (function() {
+        this.littleEdian = (function () {
             let buffer = new ArrayBuffer(2);
             new DataView(buffer).setInt16(0, 256, true);
             return new Int16Array(buffer)[0] === 256;
@@ -88,6 +98,8 @@ export default class Recorder {
         // 设置采样的参数
         this.outputSampleRate = this.config.sampleRate;     // 输出采样率
         this.oututSampleBits = this.config.sampleBits;      // 输出采样数位 8, 16
+        this.silenceDurationNotify = options.silenceDurationNotify || -1
+
     }
 
     /**
@@ -253,6 +265,7 @@ export default class Recorder {
         // 第二，三个参数分别是输入的声道数和输出的声道数，保持一致即可。
         let createScript = this.context.createScriptProcessor || this.context.createJavaScriptNode;
         this.recorder = createScript.apply(this.context, [4096, this.config.numChannels, this.config.numChannels]);
+        this.lastProcessAudioDuration = 0
 
         // 音频采集
         this.recorder.onaudioprocess = e => {
@@ -264,6 +277,27 @@ export default class Recorder {
             let lData = e.inputBuffer.getChannelData(0),
                 rData = null,
                 vol = 0;        // 音量百分比
+
+            // 计算音量百分比
+            vol = Math.max.apply(Math, lData) * 100;
+
+            if (vol < 5) {
+                console.debug('声音太小，不录')
+                if (this.speaking) {
+                    this.speaking = false
+                    this.lastNoSpeakTime = Date.now()
+                } else if (this.silenceDurationNotify != -1 && Date.now() - this.lastNoSpeakTime > this.silenceDurationNotify) {
+                    // 如果沉默时长需要通知，并且沉默时长大于设定值，则通知
+                    if (this.silenceHasNotify) {
+                        return
+                    } else {
+                        this.silenceHasNotify = true
+                        this.onsilence && this.onsilence()
+                    }
+                }
+                return
+            }
+            this.speaking = true
 
             this.lBuffer.push(new Float32Array(lData));
 
@@ -277,6 +311,21 @@ export default class Recorder {
                 this.size += rData.length;
             }
 
+            // 统计录音时长
+            this.duration += 4096 / this.inputSampleRate;
+            if (this.duration - this.lastProcessAudioDuration >= 2) {
+                this.lastProcessAudioDuration = this.duration;
+                const worker = createAssistWorker().onMessage((message) => {
+                    worker.terminate()
+                    this.onwav && this.onwav(message)
+                }).create(encoderToPcmJob);
+                worker.run({
+                    lBuffer:this.lBuffer, rBuffer: this.rBuffer,numChannels: this.config.numChannels, size: this.size, inputSampleRate: this.inputSampleRate,
+                    outputSampleRate: this.outputSampleRate, oututSampleBits: this.oututSampleBits,
+                    littleEdian: this.littleEdian
+                });
+            }
+
             // 边录边转处理 暂时不支持
             // if (this.config.compiling) {
             //     let pcm = this.transformIntoPCM(lData, rData);
@@ -285,28 +334,23 @@ export default class Recorder {
             //     // 计算录音大小
             //     this.fileSize = pcm.byteLength * this.tempPCM.length;
             // } else {
-                // 计算录音大小
-                this.fileSize = Math.floor(this.size / Math.max( this.inputSampleRate / this.outputSampleRate, 1))
-                    * (this.oututSampleBits / 8)
-            // }
-            // 为何此处计算大小需要分开计算。原因是先录后转时，是将所有数据一起处理，边录边转是单个 4096 处理，
-            // 有小数位的偏差。
+            // 计算录音大小
+            this.fileSize = Math.floor(this.size / Math.max(this.inputSampleRate / this.outputSampleRate, 1))
+                * (this.oututSampleBits / 8)
+        // }
+        // 为何此处计算大小需要分开计算。原因是先录后转时，是将所有数据一起处理，边录边转是单个 4096 处理，
+        // 有小数位的偏差。
 
-            // 计算音量百分比
-            vol = Math.max.apply(Math, lData) * 100;
-            // 统计录音时长
-            this.duration += 4096 / this.inputSampleRate;
-            // 录音时长回调
-            this.onprocess && this.onprocess(this.duration);
-            // 录音时长及响度回调
-            this.onprogress && this.onprogress({
-                duration: this.duration,
-                fileSize: this.fileSize,
-                vol,
-                // data: this.tempPCM,     // 当前所有的pcm数据，调用者控制增量
-            });
-        }
+        // 录音时长回调
+        this.onprocess && this.onprocess(this.duration);
+        // 录音时长及响度回调
+        this.onprogress && this.onprogress({
+            duration: this.duration,
+            fileSize: this.fileSize,
+            vol,
+        });
     }
+}
 
     /**
      * 终止流（这可以让浏览器上正在录音的标志消失掉）
@@ -314,46 +358,46 @@ export default class Recorder {
      * @memberof Recorder
      */
     private stopStream() {
-        if (this.stream && this.stream.getTracks) {
-            this.stream.getTracks().forEach(track => track.stop());
-            this.stream = null;
-        }
+    if (this.stream && this.stream.getTracks) {
+        this.stream.getTracks().forEach(track => track.stop());
+        this.stream = null;
     }
+}
 
     /**
      * close兼容方案
      * 如firefox 30 等低版本浏览器没有 close方法
      */
     private closeAudioContext() {
-        if (this.context && this.context.close && this.context.state !== 'closed') {
-            return this.context.close();
-        } else {
-            return new Promise((resolve) => {
-                resolve();
-            });
-        }
+    if (this.context && this.context.close && this.context.state !== 'closed') {
+        return this.context.close();
+    } else {
+        return new Promise((resolve) => {
+            resolve();
+        });
     }
+}
 
     // getUserMedia 版本兼容
     static initUserMedia() {
-        if (navigator.mediaDevices === undefined) {
-            navigator.mediaDevices = {};
-        }
+    if (navigator.mediaDevices === undefined) {
+        navigator.mediaDevices = {};
+    }
 
-        if (navigator.mediaDevices.getUserMedia === undefined) {
-            navigator.mediaDevices.getUserMedia = function(constraints) {
-                let getUserMedia = navigator.getUserMedia || navigator.webkitGetUserMedia || navigator.mozGetUserMedia;
+    if (navigator.mediaDevices.getUserMedia === undefined) {
+        navigator.mediaDevices.getUserMedia = function (constraints) {
+            let getUserMedia = navigator.getUserMedia || navigator.webkitGetUserMedia || navigator.mozGetUserMedia;
 
-                if (!getUserMedia) {
-                    return Promise.reject(new Error('浏览器不支持 getUserMedia !'));
-                }
-
-                return new Promise(function(resolve, reject) {
-                    getUserMedia.call(navigator, constraints, resolve, reject);
-                });
+            if (!getUserMedia) {
+                return Promise.reject(new Error('浏览器不支持 getUserMedia !'));
             }
+
+            return new Promise(function (resolve, reject) {
+                getUserMedia.call(navigator, constraints, resolve, reject);
+            });
         }
     }
+}
 
     /**
      * 将获取到到左右声道的Float32Array数据编码转化
@@ -363,22 +407,22 @@ export default class Recorder {
      * @returns DataView
      */
     private transformIntoPCM(lData, rData) {
-        let lBuffer = new Float32Array(lData),
-            rBuffer = new Float32Array(rData);
+    let lBuffer = new Float32Array(lData),
+        rBuffer = new Float32Array(rData);
 
-        let data = compress({
-            left: lBuffer,
-            right: rBuffer,
-        }, this.inputSampleRate, this.outputSampleRate);
+    let data = compress({
+        left: lBuffer,
+        right: rBuffer,
+    }, this.inputSampleRate, this.outputSampleRate);
 
-        return encodePCM(data, this.oututSampleBits, this.littleEdian);
-    }
+    return encodePCM(data, this.oututSampleBits, this.littleEdian);
+}
 
-    static getPermission(): Promise<{}> {
-        this.initUserMedia();
+    static getPermission(): Promise < {} > {
+    this.initUserMedia();
 
-        return navigator.mediaDevices.getUserMedia({audio: true}).then((stream) => {
-            stream && stream.getTracks().forEach(track => track.stop());
-        });
-    }
+    return navigator.mediaDevices.getUserMedia({ audio: true }).then((stream) => {
+        stream && stream.getTracks().forEach(track => track.stop());
+    });
+}
 }
