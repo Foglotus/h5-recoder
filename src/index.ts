@@ -26,7 +26,7 @@ class Index extends Recorder {
     public onresumeplay: () => void;            // 音频恢复播放回调
     public onstopplay: () => void;              // 音频停止播放回调
     public onplayend: () => void;               // 音频正常播放结束
-    public onwav: (wav: DataView<ArrayBuffer>) => void;                   // 定时发送当前音频
+    public onwav: (wav: any) => void;                   // 定时发送当前音频
     public onsilence: () => void;               // 用户长时间未说话回调
     /**
      * @param {Object} options 包含以下三个参数：

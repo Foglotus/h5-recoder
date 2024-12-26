@@ -1,5 +1,5 @@
 import assistWorker from "assist-worker";
-export const encoderToPcmJob = ({ lBuffer, rBuffer, numChannels, size, inputSampleRate, outputSampleRate, oututSampleBits, littleEdian }, workerMethods) => {
+export const encoderToPcmJob = ({ lBuffer, rBuffer, numChannels, size, inputSampleRate, outputSampleRate, oututSampleBits, littleEdian }: any, workerMethods) => {
     // take out the method in the object containing the worker thread internal control method
     const { postMessage } = workerMethods;
     /**
