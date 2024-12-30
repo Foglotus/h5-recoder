@@ -295,6 +295,12 @@ export default class Recorder {
                         this.onsilence && this.onsilence()
                     }
                 }
+                // 录音时长及响度回调
+                this.onprogress && this.onprogress({
+                    duration: this.duration,
+                    fileSize: this.fileSize,
+                    vol,
+                });
                 return
             }
             this.speaking = true
