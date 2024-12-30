@@ -50,6 +50,7 @@ export default class Recorder {
         duration: number,
         fileSize: number,
         vol: number,
+        speaking: boolean,
         // data: Array<DataView>,      // 当前存储的所有录音数据
     }) => void;
     public onplay: () => void;                  // 音频播放回调
@@ -300,6 +301,7 @@ export default class Recorder {
                     duration: this.duration,
                     fileSize: this.fileSize,
                     vol,
+                    speaking: this.speaking,
                 });
                 return
             }
@@ -354,6 +356,7 @@ export default class Recorder {
             duration: this.duration,
             fileSize: this.fileSize,
             vol,
+            speaking: this.speaking,
         });
     }
 }
