@@ -95,6 +95,7 @@ class App extends React.Component {
             compiling: this.state.compiling,       // 是否开启边录音边转化（后期改用web worker）
             silenceDurationNotify: this.state.silenceDurationNotify,
             compilingProcess: this.state.compilingProcess,
+            volumeThreshold: 10,
         };
     }
 

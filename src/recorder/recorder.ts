@@ -15,6 +15,7 @@ interface recorderConfig {
     compiling?: boolean,        // 是否边录边播
     silenceDurationNotify?: number // 沉默多久通知
     compilingProcess?: boolean // 是否边录边转换
+    volumeThreshold?: number // 音量阈值，低于此值不录音
 }
 
 export default class Recorder {
@@ -95,12 +96,12 @@ export default class Recorder {
             numChannels: ~[1, 2].indexOf(options.numChannels) ? options.numChannels : 1,
             // 是否需要边录边转，默认关闭，后期使用web worker
             // compiling: !!options.compiling || false,   // 先移除
+            volumeThreshold: options.volumeThreshold
         };
         // 设置采样的参数
         this.outputSampleRate = this.config.sampleRate;     // 输出采样率
         this.oututSampleBits = this.config.sampleBits;      // 输出采样数位 8, 16
         this.silenceDurationNotify = options.silenceDurationNotify || -1
-
     }
 
     /**
@@ -281,8 +282,9 @@ export default class Recorder {
 
             // 计算音量百分比
             vol = Math.max.apply(Math, lData) * 100;
+            const volumeThreshold = this.config.volumeThreshold || 8;
 
-            if (vol < 5) {
+            if (vol < volumeThreshold) {
                 console.debug('声音太小，不录')
                 if (this.speaking) {
                     this.speaking = false

@@ -1,10 +1,10 @@
-
 interface recorderConfig {
     sampleBits?: number,        // 采样位数
     sampleRate?: number,        // 采样率
     numChannels?: number,       // 声道数
     compiling?: boolean,        // 是否边录边播
-    silenceDurationNotify?: number // 沉默秒数通知
+    silenceDurationNotify?: number, // 沉默秒数通知
+    volumeThreshold?: number // 音量阈值，低于此值不录音
 }
 
 interface dataview {
@@ -50,7 +50,7 @@ declare class Recorder {
         duration: number,
         fileSize: number,
         vol: number,
-        data: Array<DataView>,
+        speaking: boolean,
     }) => void;
 
     public onplay: () => void;
@@ -63,6 +63,7 @@ declare class Recorder {
     constructor(options?: recorderConfig);
 
     public setOption: (options?: recorderConfig) => void
+    protected setNewOption(options?: recorderConfig): void;
 
     initRecorder(): void;
     start(): Promise<{}>;
@@ -76,6 +77,12 @@ declare class Recorder {
     stopPlay(): void;
     destroy(): Promise<{}>;
 
+    startRecord(): Promise<{}>;
+    pauseRecord(): void;
+    resumeRecord(): void;
+    stopRecord(): void;
+    destroyRecord(): Promise<{}>;
+
     getWholeData(): any;
     getNextData(): any;
     getRecordAnalyseData(): any;
@@ -87,8 +94,9 @@ declare class Recorder {
     static playAudio(blob): void;
     static compress(data, inputSampleRate: number, outputSampleRate: number);
     static encodePCM(bytes, sampleBits: number, littleEdian: boolean);
-    static encodeWAV(bytes: dataview, inputSampleRate: number, outputSampleRate: number, numChannels: number, oututSampleBits: number, littleEdian: boolean);
-    static throwError(message: string)
+    static encodeWAV(bytes: dataview, inputSampleRate: number, outputSampleRate: number, numChannels: number, oututSampleBits: number, littleEdian: boolean): any;
+    static throwError(message: string): void;
+    static getPermission(): Promise<{}>;
 }
 
 type UserName = string
